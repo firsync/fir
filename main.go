@@ -46,15 +46,20 @@ func init() {
 
 func main() {
 	log.Println("🌿 hello fir")
-	checkIfFilesOrFoldersExist([]string{"~/.fir/config", "./.fir/config", "./."}, true)
-
+	checkIfFilesOrFoldersExist([]string{"~/.fir/fir.config", "./.fir/fir.config"}, true)
 }
 
 func checkIfFilesOrFoldersExist(fileAndFolderList []string, createFileFolder bool) bool {
 	for _, fileOrFolder := range fileAndFolderList {
 		if _, err := os.Stat(fileOrFolder); os.IsNotExist(err) {
 			if createFileFolder {
-				if err := os.MkdirAll(fileOrFolder, os.ModePerm); err != nil {
+				var err error
+				if filepath.Ext(fileOrFolder) == "" {
+					err = os.Mkdir(fileOrFolder, os.ModePerm)
+				} else {
+					_, err = os.Create(fileOrFolder)
+				}
+				if err != nil {
 					log.Println(err)
 					return false
 				}
@@ -65,35 +70,6 @@ func checkIfFilesOrFoldersExist(fileAndFolderList []string, createFileFolder boo
 	}
 	return true
 }
-
-// func getHashListForFolder(folderPath string) ([]string, bool) {
-// 	hashList := []string{}
-// 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
-// 		if info.IsDir() {
-// 			return nil
-// 		}
-// 		file, err := os.Open(path)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		defer file.Close()
-
-// 		hash := sha3.New256()
-// 		if _, err := io.Copy(hash, file); err != nil {
-// 			return err
-// 		}
-// 		hashInBytes := hash.Sum(nil)[:32]
-// 		hashInString := hex.EncodeToString(hashInBytes)
-// 		relativePath, _ := filepath.Rel(folderPath, path)
-// 		hashList = append(hashList, fmt.Sprintf("%s %s", hashInString, relativePath))
-// 		return nil
-// 	})
-// 	if err != nil {
-// 		log.Println(err)
-// 		return []string{}, false
-// 	}
-// 	return hashList, true
-// }
 
 func getHashListForFolder(folderPath string) ([]string, error) {
 	hashList := []string{}
@@ -124,8 +100,8 @@ func getHashListForFolder(folderPath string) ([]string, error) {
 }
 
 func loadOrCreateConfig() bool {
-	globalConfig := "~/.fir/config"
-	localConfig := "./.fir/config"
+	globalConfig := filepath.Join(os.Getenv("HOME"), ".fir/fir.config")
+	localConfig := "./.fir/fir.config"
 	config := Config{
 		Name:   "Fir User",
 		Email:  "user@example.com",
@@ -144,17 +120,58 @@ func loadOrCreateConfig() bool {
 	return true
 }
 
-func loadGlobalConfig(globalConfig string, config *Config) bool {
-	if checkIfFilesOrFoldersExist([]string{globalConfig}, true) {
-		globalConfigFile, _ := os.Open(globalConfig)
+//	func loadGlobalConfig(globalConfig string, config *Config) bool {
+//		if checkIfFilesOrFoldersExist([]string{globalConfig}, true) {
+//			globalConfigFile, _ := os.Open(globalConfig)
+//			defer globalConfigFile.Close()
+//			byteValue, _ := ioutil.ReadAll(globalConfigFile)
+//			json.Unmarshal(byteValue, config)
+//			return true
+//		} else {
+//			configJSON, _ := json.Marshal(config)
+//			ioutil.WriteFile(globalConfig, configJSON, 0644)
+//			return true
+//		}
+//	}
+func loadGlobalConfig(globalConfig string, config *Config) (bool, error) {
+
+	ffexists, ffexistsErr := folderExists(filepath.Join(os.Getenv("HOME"), ".fir"))
+	if ffexistsErr != nil {
+		return false, ffexistsErr
+	}
+	if !ffexists {
+		createFolder(filepath.Join(os.Getenv("HOME"), ".fir"))
+	}
+	fexists, fexistsErr := fileExists(globalConfig)
+	if fexistsErr != nil {
+		return false, fexistsErr
+	}
+	if fexists {
+		globalConfigFile, err := os.Open(globalConfig)
+		if err != nil {
+			return false, err
+		}
 		defer globalConfigFile.Close()
-		byteValue, _ := ioutil.ReadAll(globalConfigFile)
+		byteValue, err := ioutil.ReadAll(globalConfigFile)
+		if err != nil {
+			return false, err
+		}
 		json.Unmarshal(byteValue, config)
-		return true
+		return true, nil
 	} else {
-		configJSON, _ := json.Marshal(config)
-		ioutil.WriteFile(globalConfig, configJSON, 0644)
-		return true
+		configJSON, err := json.Marshal(config)
+		if err != nil {
+			return false, err
+		}
+		err = createFile(globalConfig)
+		if err != nil {
+			return false, err
+		}
+		err = writeFile(globalConfig, string(configJSON))
+		if err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 }
 
