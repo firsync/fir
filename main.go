@@ -120,19 +120,6 @@ func loadOrCreateConfig() bool {
 	return true
 }
 
-//	func loadGlobalConfig(globalConfig string, config *Config) bool {
-//		if checkIfFilesOrFoldersExist([]string{globalConfig}, true) {
-//			globalConfigFile, _ := os.Open(globalConfig)
-//			defer globalConfigFile.Close()
-//			byteValue, _ := ioutil.ReadAll(globalConfigFile)
-//			json.Unmarshal(byteValue, config)
-//			return true
-//		} else {
-//			configJSON, _ := json.Marshal(config)
-//			ioutil.WriteFile(globalConfig, configJSON, 0644)
-//			return true
-//		}
-//	}
 func loadGlobalConfig(globalConfig string, config *Config) (bool, error) {
 
 	ffexists, ffexistsErr := folderExists(filepath.Join(os.Getenv("HOME"), ".fir"))
@@ -175,17 +162,45 @@ func loadGlobalConfig(globalConfig string, config *Config) (bool, error) {
 	}
 }
 
-func loadLocalConfig(localConfig string, config *Config) bool {
-	if checkIfFilesOrFoldersExist([]string{localConfig}, true) {
-		localConfigFile, _ := os.Open(localConfig)
+func loadLocalConfig(localConfig string, config *Config) (bool, error) {
+
+	ffexists, ffexistsErr := folderExists("./.fir")
+	if ffexistsErr != nil {
+		return false, ffexistsErr
+	}
+	if !ffexists {
+		createFolder("./.fir")
+	}
+	fexists, fexistsErr := fileExists(localConfig)
+	if fexistsErr != nil {
+		return false, fexistsErr
+	}
+	if fexists {
+		localConfigFile, err := os.Open(localConfig)
+		if err != nil {
+			return false, err
+		}
 		defer localConfigFile.Close()
-		byteValue, _ := ioutil.ReadAll(localConfigFile)
+		byteValue, err := ioutil.ReadAll(localConfigFile)
+		if err != nil {
+			return false, err
+		}
 		json.Unmarshal(byteValue, config)
-		return true
+		return true, nil
 	} else {
-		configJSON, _ := json.Marshal(config)
-		ioutil.WriteFile(localConfig, configJSON, 0644)
-		return true
+		configJSON, err := json.Marshal(config)
+		if err != nil {
+			return false, err
+		}
+		err = createFile(localConfig)
+		if err != nil {
+			return false, err
+		}
+		err = writeFile(localConfig, string(configJSON))
+		if err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 }
 
