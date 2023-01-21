@@ -56,25 +56,18 @@ func main() {
 		log.Println("fExistsErr: ", fExistsErr)
 	}
 }
-
 func getHashListForFolder(folderPath string) ([]string, error) {
-	ignoreList := []string{}
-	hashList := []string{}
-
-	// read .ignore file if it exists
-	if _, err := os.Stat(".ignore"); !os.IsNotExist(err) {
-		ignoreBytes, err := ioutil.ReadFile(".ignore")
-		if err != nil {
-			return []string{}, err
-		}
-		ignoreList = strings.Split(string(ignoreBytes), "\n")
+	ignoreList, err := readIgnoreList()
+	if err != nil {
+		return nil, err
 	}
 
 	files, err := ioutil.ReadDir(folderPath)
 	if err != nil {
-		return []string{}, err
+		return nil, err
 	}
 
+	var hashList []string
 	for _, file := range files {
 		if file.IsDir() {
 			if file.Name() == ".fir" || file.Name() == ".git" {
@@ -84,28 +77,48 @@ func getHashListForFolder(folderPath string) ([]string, error) {
 		filePath := filepath.Join(folderPath, file.Name())
 		relativePath, err := filepath.Rel(folderPath, filePath)
 		if err != nil {
-			return []string{}, err
+			return nil, err
 		}
 		// check if file or directory is in ignore list
 		if contains(ignoreList, relativePath) {
 			continue
 		}
-		file, err := os.Open(filePath)
+		fileHash, err := calculateFileHash(filePath)
 		if err != nil {
-			return []string{}, err
+			return nil, err
 		}
-		defer file.Close()
-
-		hash := sha3.New256()
-		if _, err := io.Copy(hash, file); err != nil {
-			return []string{}, err
-		}
-		hashInBytes := hash.Sum(nil)[:32]
-		hashInString := hex.EncodeToString(hashInBytes)
-
-		hashList = append(hashList, fmt.Sprintf("%s %s", hashInString, relativePath))
+		hashList = append(hashList, fmt.Sprintf("%s %s", fileHash, relativePath))
 	}
 	return hashList, nil
+}
+
+func readIgnoreList() ([]string, error) {
+	var ignoreList []string
+	if _, err := os.Stat(".ignore"); !os.IsNotExist(err) {
+		ignoreBytes, err := ioutil.ReadFile(".ignore")
+		if err != nil {
+			return nil, err
+		}
+		ignoreList = strings.Split(string(ignoreBytes), "\n")
+	}
+	return ignoreList, nil
+}
+
+func calculateFileHash(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha3.New256()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	hashInBytes := hash.Sum(nil)[:32]
+	hashInString := hex.EncodeToString(hashInBytes)
+
+	return hashInString, nil
 }
 
 func contains(list []string, item string) bool {
