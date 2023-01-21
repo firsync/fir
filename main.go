@@ -37,6 +37,7 @@ func main() {
 		case "history":
 			firHistoryCase()
 		case "sync":
+			firSyncCase()
 			fmt.Println("fir sync command was run")
 		default:
 			fmt.Println("💥 I don't know that command yet.\n↪️  Try just typing `fir`")
