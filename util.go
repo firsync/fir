@@ -13,6 +13,17 @@ func fileExists(file string) (bool, error) {
 	return true, nil
 }
 
+func removeDuplicateItems(elements []string) []string {
+	encountered := map[string]bool{}
+	for _, element := range elements {
+		encountered[element] = true
+	}
+	var result []string
+	for key := range encountered {
+		result = append(result, key)
+	}
+	return result
+}
 func folderExists(folder string) (bool, error) {
 	fileInfo, err := os.Stat(folder)
 	if err != nil {

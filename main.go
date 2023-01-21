@@ -1,11 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,21 +23,11 @@ func main() {
 	fmt.Println("🌿 hello fir")
 	if len(os.Args) < 2 {
 		fmt.Println("No command was entered, checking if the current directory is a fir project")
-		// check if the current directory is a fir project and print a help dialogue with a syntax helper if not
 	} else {
 		switch os.Args[1] {
 		case "save":
-			fmt.Println("fir save command was run")
-			loadOrCreateConfig()
-			hashlist, hashlistErr := getHashListForFolder(".")
-			if hashlistErr != nil {
-				log.Println("Error assembling file hashes: ", hashlistErr)
-			}
-			writeHashErr := writeLocalHashList(hashlist)
-			if writeHashErr != nil {
-				log.Println("Error writing hash list: ", writeHashErr)
-			}
-
+			firSaveCase()
+			fmt.Println("💾 Snapshot saved")
 		case "history":
 			fmt.Println("fir history command was run")
 		case "sync":
@@ -56,33 +45,99 @@ func main() {
 		log.Println("fExistsErr: ", fExistsErr)
 	}
 }
+
+func firSaveCase() {
+	unixTimestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	loadOrCreateConfig()
+	hashlist, hashlistErr := getHashListForFolder(".")
+	if hashlistErr != nil {
+		log.Println("Error assembling file hashes: ", hashlistErr)
+	}
+
+	// prompt the user for a save message
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("📝 Enter a save message: [optional] ")
+	saveMessage, _ := reader.ReadString('\n')
+	saveMessage = strings.TrimRight(saveMessage, "\r\n")
+
+	// prepend the save message to the first line of the file
+	filepath := "./.fir/checkpoints/" + unixTimestamp + ".list"
+	thisFilePathExists, thisFilePathExistsErr := fileExists(filepath)
+	if !thisFilePathExists {
+		createFile(filepath)
+	}
+	if thisFilePathExistsErr != nil {
+		log.Println(thisFilePathExistsErr)
+	}
+	file, err := os.OpenFile(filepath, os.O_RDWR, 0600)
+	if err != nil {
+		log.Println("Error opening file: ", err)
+		return
+	}
+	defer file.Close()
+
+	now := time.Now()
+	dateString := now.Format("Mon Jan 2 15:04:05 MST 2006")
+
+	firstLine := "message: " + saveMessage + " " + dateString + "\n"
+	temp := firstLine + strings.Join(hashlist, "\n")
+	file.Truncate(0)
+	file.Seek(0, 0)
+	_, _ = file.WriteString(temp)
+}
+
 func getHashListForFolder(folderPath string) ([]string, error) {
+
+	theseFiles, theseFilesErr := filePathWalkDir(folderPath)
+	if theseFilesErr != nil {
+		log.Println("error walking directory: ", theseFilesErr)
+	}
+
 	ignoreList, err := readIgnoreList()
 	if err != nil {
 		return nil, err
 	}
 
-	files, err := ioutil.ReadDir(folderPath)
-	if err != nil {
-		return nil, err
+	var cleanList []string
+
+	for _, s := range theseFiles {
+		if strings.HasPrefix(s, ".git/") || strings.HasPrefix(s, ".fir/") {
+			continue
+		}
+		skip := false
+		for _, ss := range ignoreList {
+			if strings.HasPrefix(s, ss) {
+				skip = true
+				break
+			}
+			if strings.HasPrefix(ss, s) {
+				skip = true
+				break
+			}
+			if s == ss {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			cleanList = append(cleanList, s)
+		}
 	}
 
 	var hashList []string
-	for _, file := range files {
-		if file.IsDir() {
-			if file.Name() == ".fir" || file.Name() == ".git" {
-				continue
-			}
-		}
-		filePath := filepath.Join(folderPath, file.Name())
+	for _, file := range cleanList {
+		filePath := filepath.Join(folderPath, file)
 		relativePath, err := filepath.Rel(folderPath, filePath)
 		if err != nil {
 			return nil, err
 		}
+
 		// check if file or directory is in ignore list
 		if contains(ignoreList, relativePath) {
+			log.Println("File ignored: ", relativePath)
 			continue
 		}
+
 		fileHash, err := calculateFileHash(filePath)
 		if err != nil {
 			return nil, err
@@ -95,13 +150,33 @@ func getHashListForFolder(folderPath string) ([]string, error) {
 func readIgnoreList() ([]string, error) {
 	var ignoreList []string
 	if _, err := os.Stat(".ignore"); !os.IsNotExist(err) {
-		ignoreBytes, err := ioutil.ReadFile(".ignore")
+		file, err := os.Open(".ignore")
 		if err != nil {
 			return nil, err
 		}
-		ignoreList = strings.Split(string(ignoreBytes), "\n")
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			ignoreList = append(ignoreList, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			return nil, err
+		}
 	}
-	return ignoreList, nil
+	var newList []string
+	for _, s := range ignoreList {
+		s = strings.TrimPrefix(s, "./")
+		s = strings.TrimPrefix(s, "/")
+		s = strings.TrimSuffix(s, "/")
+		s = strings.TrimSuffix(s, "/*")
+		if s == "" {
+			continue
+		}
+		newList = append(newList, s)
+	}
+	thisOtherNewListWhyDoIDoThis := removeDuplicateItems(newList)
+	return thisOtherNewListWhyDoIDoThis, nil
 }
 
 func calculateFileHash(filePath string) (string, error) {
@@ -130,140 +205,13 @@ func contains(list []string, item string) bool {
 	return false
 }
 
-func loadOrCreateConfig() bool {
-	globalConfig := filepath.Join(os.Getenv("HOME"), ".fir/fir.config")
-	localConfig := "./.fir/fir.config"
-	config := Config{
-		Name:   "Fir User",
-		Email:  "user@example.com",
-		Remote: "",
-		PubKey: "",
-	}
-
-	loadGlobalConfig(globalConfig, &config)
-	loadLocalConfig(localConfig, &config)
-
-	FirName = config.Name
-	FirEmail = config.Email
-	FirRemote = config.Remote
-	FirPubKey = config.PubKey
-
-	return true
-}
-
-func loadGlobalConfig(globalConfig string, config *Config) (bool, error) {
-
-	ffexists, ffexistsErr := folderExists(filepath.Join(os.Getenv("HOME"), ".fir"))
-	if ffexistsErr != nil {
-		return false, ffexistsErr
-	}
-	if !ffexists {
-		createFolder(filepath.Join(os.Getenv("HOME"), ".fir"))
-	}
-	fexists, fexistsErr := fileExists(globalConfig)
-	if fexistsErr != nil {
-		return false, fexistsErr
-	}
-	if fexists {
-		globalConfigFile, err := os.Open(globalConfig)
-		if err != nil {
-			return false, err
+func filePathWalkDir(thisPath string) ([]string, error) {
+	var files []string
+	err := filepath.Walk(thisPath, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			files = append(files, path)
 		}
-		defer globalConfigFile.Close()
-		byteValue, err := ioutil.ReadAll(globalConfigFile)
-		if err != nil {
-			return false, err
-		}
-		json.Unmarshal(byteValue, config)
-		return true, nil
-	} else {
-		configJSON, err := json.Marshal(config)
-		if err != nil {
-			return false, err
-		}
-		err = createFile(globalConfig)
-		if err != nil {
-			return false, err
-		}
-		err = writeFile(globalConfig, string(configJSON))
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-}
-
-func loadLocalConfig(localConfig string, config *Config) (bool, error) {
-
-	ffexists, ffexistsErr := folderExists("./.fir")
-	if ffexistsErr != nil {
-		return false, ffexistsErr
-	}
-	if !ffexists {
-		createFolder("./.fir")
-	}
-	fexists, fexistsErr := fileExists(localConfig)
-	if fexistsErr != nil {
-		return false, fexistsErr
-	}
-	if fexists {
-		localConfigFile, err := os.Open(localConfig)
-		if err != nil {
-			return false, err
-		}
-		defer localConfigFile.Close()
-		byteValue, err := ioutil.ReadAll(localConfigFile)
-		if err != nil {
-			return false, err
-		}
-		json.Unmarshal(byteValue, config)
-		return true, nil
-	} else {
-		configJSON, err := json.Marshal(config)
-		if err != nil {
-			return false, err
-		}
-		err = createFile(localConfig)
-		if err != nil {
-			return false, err
-		}
-		err = writeFile(localConfig, string(configJSON))
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-}
-
-func writeLocalHashList(hashList []string) error {
-	unixTimestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	filepath := "./.fir/checkpoints/" + unixTimestamp + ".list"
-
-	folderExists, folderExistsErr := folderExists("./.fir/checkpoints/")
-	if folderExistsErr != nil {
-		return folderExistsErr
-	}
-	if !folderExists {
-		createFolderErr := createFolder("./.fir/checkpoints/")
-		if createFolderErr != nil {
-			return createFolderErr
-		}
-	}
-	fileExists, fileExistsErr := fileExists(filepath)
-	if fileExistsErr != nil {
-		return fileExistsErr
-	}
-	if !fileExists {
-		createFileErr := createFile(filepath)
-		if createFileErr != nil {
-			return createFileErr
-		}
-	}
-	for _, line := range hashList {
-		writeFileErr := writeFile(filepath, line+"\n")
-		if writeFileErr != nil {
-			return writeFileErr
-		}
-	}
-	return nil
+		return nil
+	})
+	return files, err
 }

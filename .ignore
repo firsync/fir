@@ -1,2 +1,4 @@
 ./ignore-me.txt 
+./ignore-me-also
+./ignore-me-also/*
 ./ignore-me-also/
