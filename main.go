@@ -55,37 +55,37 @@ func main() {
 		log.Println("fExistsErr: ", fExistsErr)
 	}
 }
-
 func getHashListForFolder(folderPath string) ([]string, error) {
 	hashList := []string{}
-	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() {
-			if info.Name() == ".fir" || info.Name() == ".git" {
-				return filepath.SkipDir
+	files, err := ioutil.ReadDir(folderPath)
+	if err != nil {
+		return []string{}, err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			if file.Name() == ".fir" || file.Name() == ".git" {
+				continue
 			}
-			return nil
 		}
-		file, err := os.Open(path)
+		filePath := filepath.Join(folderPath, file.Name())
+		file, err := os.Open(filePath)
 		if err != nil {
-			return err
+			return []string{}, err
 		}
 		defer file.Close()
 
 		hash := sha3.New256()
 		if _, err := io.Copy(hash, file); err != nil {
-			return err
+			return []string{}, err
 		}
 		hashInBytes := hash.Sum(nil)[:32]
 		hashInString := hex.EncodeToString(hashInBytes)
-		relativePath, err := filepath.Rel(folderPath, path)
+		relativePath, err := filepath.Rel(folderPath, filePath)
 		if err != nil {
-			return err
+			return []string{}, err
 		}
 		hashList = append(hashList, fmt.Sprintf("%s %s", hashInString, relativePath))
-		return nil
-	})
-	if err != nil {
-		return []string{}, err
 	}
 	return hashList, nil
 }

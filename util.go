@@ -40,17 +40,16 @@ func createFolder(folder string) error {
 	return nil
 }
 
-func writeFile(file, contents string) error {
-	f, err := os.Create(file)
+func writeFile(filepath string, contents string) error {
+	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer file.Close()
 
-	_, err = f.WriteString(contents)
+	_, err = file.WriteString(contents)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
