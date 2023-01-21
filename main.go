@@ -59,8 +59,11 @@ func main() {
 func getHashListForFolder(folderPath string) ([]string, error) {
 	hashList := []string{}
 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
-		if info.Name() == ".fir" || info.Name() == ".git" {
-			return filepath.SkipDir
+		if info.IsDir() {
+			if info.Name() == ".fir" || info.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		file, err := os.Open(path)
 		if err != nil {
