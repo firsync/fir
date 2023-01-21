@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,6 +16,11 @@ import (
 )
 
 func init() {
+
+}
+
+func main() {
+	fmt.Println("🌿 hello fir")
 	if len(os.Args) < 2 {
 		fmt.Println("No command was entered, checking if the current directory is a fir project")
 		// check if the current directory is a fir project and print a help dialogue with a syntax helper if not
@@ -42,40 +46,21 @@ func init() {
 			fmt.Println("Invalid command")
 		}
 	}
-}
-
-func main() {
-	log.Println("🌿 hello fir")
-	checkIfFilesOrFoldersExist([]string{"~/.fir/fir.config", "./.fir/fir.config"}, true)
-}
-
-func checkIfFilesOrFoldersExist(fileAndFolderList []string, createFileFolder bool) bool {
-	for _, fileOrFolder := range fileAndFolderList {
-		if _, err := os.Stat(fileOrFolder); os.IsNotExist(err) {
-			if createFileFolder {
-				var err error
-				if filepath.Ext(fileOrFolder) == "" {
-					err = os.Mkdir(fileOrFolder, os.ModePerm)
-				} else {
-					_, err = os.Create(fileOrFolder)
-				}
-				if err != nil {
-					log.Println(err)
-					return false
-				}
-			} else {
-				return false
-			}
-		}
+	_, gcExistsErr := fileExists(GlobalConfig)
+	if gcExistsErr != nil {
+		log.Println("gcExistsErr: ", gcExistsErr)
 	}
-	return true
+	_, fExistsErr := fileExists(LocalConfig)
+	if fExistsErr != nil {
+		log.Println("fExistsErr: ", fExistsErr)
+	}
 }
 
 func getHashListForFolder(folderPath string) ([]string, error) {
 	hashList := []string{}
 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() {
-			return nil
+		if info.Name() == ".fir" || info.Name() == ".git" {
+			return filepath.SkipDir
 		}
 		file, err := os.Open(path)
 		if err != nil {
@@ -89,7 +74,10 @@ func getHashListForFolder(folderPath string) ([]string, error) {
 		}
 		hashInBytes := hash.Sum(nil)[:32]
 		hashInString := hex.EncodeToString(hashInBytes)
-		relativePath, _ := filepath.Rel(folderPath, path)
+		relativePath, err := filepath.Rel(folderPath, path)
+		if err != nil {
+			return err
+		}
 		hashList = append(hashList, fmt.Sprintf("%s %s", hashInString, relativePath))
 		return nil
 	})
@@ -207,17 +195,31 @@ func loadLocalConfig(localConfig string, config *Config) (bool, error) {
 func writeLocalHashList(hashList []string) error {
 	unixTimestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	filepath := "./.fir/checkpoints/" + unixTimestamp + ".list"
-	if !checkIfFilesOrFoldersExist([]string{filepath}, true) {
-		return errors.New("unable to create the local hash list file")
+
+	folderExists, folderExistsErr := folderExists("./.fir/checkpoints/")
+	if folderExistsErr != nil {
+		return folderExistsErr
 	}
-	file, err := os.OpenFile(filepath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
+	if !folderExists {
+		createFolderErr := createFolder("./.fir/checkpoints/")
+		if createFolderErr != nil {
+			return createFolderErr
+		}
 	}
-	defer file.Close()
+	fileExists, fileExistsErr := fileExists(filepath)
+	if fileExistsErr != nil {
+		return fileExistsErr
+	}
+	if !fileExists {
+		createFileErr := createFile(filepath)
+		if createFileErr != nil {
+			return createFileErr
+		}
+	}
 	for _, line := range hashList {
-		if _, err := file.WriteString(line + "\n"); err != nil {
-			return err
+		writeFileErr := writeFile(filepath, line+"\n")
+		if writeFileErr != nil {
+			return writeFileErr
 		}
 	}
 	return nil

@@ -32,12 +32,12 @@ func createFile(file string) error {
 	return nil
 }
 
-func createFolder(folder string) (bool, error) {
+func createFolder(folder string) error {
 	err := os.MkdirAll(folder, os.ModePerm)
 	if err != nil {
-		return false, err
+		return err
 	}
-	return true, nil
+	return nil
 }
 
 func writeFile(file, contents string) error {
