@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/sha3"
@@ -55,8 +56,20 @@ func main() {
 		log.Println("fExistsErr: ", fExistsErr)
 	}
 }
+
 func getHashListForFolder(folderPath string) ([]string, error) {
+	ignoreList := []string{}
 	hashList := []string{}
+
+	// read .ignore file if it exists
+	if _, err := os.Stat(".ignore"); !os.IsNotExist(err) {
+		ignoreBytes, err := ioutil.ReadFile(".ignore")
+		if err != nil {
+			return []string{}, err
+		}
+		ignoreList = strings.Split(string(ignoreBytes), "\n")
+	}
+
 	files, err := ioutil.ReadDir(folderPath)
 	if err != nil {
 		return []string{}, err
@@ -69,6 +82,14 @@ func getHashListForFolder(folderPath string) ([]string, error) {
 			}
 		}
 		filePath := filepath.Join(folderPath, file.Name())
+		relativePath, err := filepath.Rel(folderPath, filePath)
+		if err != nil {
+			return []string{}, err
+		}
+		// check if file or directory is in ignore list
+		if contains(ignoreList, relativePath) {
+			continue
+		}
 		file, err := os.Open(filePath)
 		if err != nil {
 			return []string{}, err
@@ -81,13 +102,19 @@ func getHashListForFolder(folderPath string) ([]string, error) {
 		}
 		hashInBytes := hash.Sum(nil)[:32]
 		hashInString := hex.EncodeToString(hashInBytes)
-		relativePath, err := filepath.Rel(folderPath, filePath)
-		if err != nil {
-			return []string{}, err
-		}
+
 		hashList = append(hashList, fmt.Sprintf("%s %s", hashInString, relativePath))
 	}
 	return hashList, nil
+}
+
+func contains(list []string, item string) bool {
+	for _, i := range list {
+		if i == item {
+			return true
+		}
+	}
+	return false
 }
 
 func loadOrCreateConfig() bool {
