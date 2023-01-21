@@ -2,11 +2,16 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -21,15 +26,9 @@ func init() {
 }
 
 func main() {
-	fmt.Println("🌿 hello fir")
+	fmt.Println("🌿 Hello Fir")
 	if len(os.Args) < 2 {
-		WeReGood, weReNotGood := folderExists(".fir")
-		if weReNotGood != nil {
-			fmt.Println("🤔 This folder isn't a fir project yet...\n...but if you meant to create one, you can type `fir save` at any time to get started :)")
-		}
-		if WeReGood {
-			fmt.Println("👍 This folder is a fir project :)\n- Type `fir save` to save a snapshot of your progress\n- Type `fir history` to view your saves so far")
-		}
+		firNoArgsCase()
 	} else {
 		switch os.Args[1] {
 		case "save":
@@ -40,7 +39,7 @@ func main() {
 		case "sync":
 			fmt.Println("fir sync command was run")
 		default:
-			fmt.Println("Invalid command")
+			fmt.Println("💥 I don't know that command yet.\n↪️  Try just typing `fir`")
 		}
 	}
 	_, gcExistsErr := fileExists(GlobalConfig)
@@ -50,6 +49,59 @@ func main() {
 	_, fExistsErr := fileExists(LocalConfig)
 	if fExistsErr != nil {
 		log.Println("fExistsErr: ", fExistsErr)
+	}
+}
+func firSyncCase() {
+	keys := initKeys()
+
+	GlobalConfigValues.PubKey = keys.publicKey
+	GlobalConfigValues.Remote = "https://firsync.com"
+
+	// Establish a connection to the firsync.com server
+	conn, err := net.Dial("tcp", "firsync.com:8020")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	_, err = conn.Write([]byte(keys.signedKey))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Send the public key to the server for registration
+	resp, err := http.Post("https://firsync.com/register", "application/x-www-form-urlencoded", bytes.NewBuffer([]byte("public_key="+keys.publicKey)))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		log.Fatal(string(body))
+	}
+	fmt.Println("Public key registered with the server")
+
+	// Use rsync to sync the code to the server
+	cmd := exec.Command("rsync", "-avz", "--delete", "./", "firsync.com:"+keys.publicKey)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Code synced with the server")
+}
+
+func firNoArgsCase() {
+	WeReGood, weReNotGood := folderExists(".fir")
+	if weReNotGood != nil {
+		fmt.Println("🤔 This folder isn't a fir project yet...\n...but if you meant to create one, you can type `fir save` at any time to get started :)")
+	}
+	if WeReGood {
+		fmt.Println("👍 This folder is a fir project :)\n- Type `fir save` to save a snapshot of your progress\n- Type `fir history` to view your saves so far")
 	}
 }
 

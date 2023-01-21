@@ -18,8 +18,10 @@ type Config struct {
 	Email  string
 	Remote string
 	PubKey string
+	Token  string
 }
 
+var GlobalConfigValues Config
 var (
 	GlobalConfig = filepath.Join(os.Getenv("HOME"), ".fir/fir.config")
 	LocalConfig  = "./.fir/fir.config"
