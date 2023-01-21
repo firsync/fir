@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,14 +23,20 @@ func init() {
 func main() {
 	fmt.Println("🌿 hello fir")
 	if len(os.Args) < 2 {
-		fmt.Println("No command was entered, checking if the current directory is a fir project")
+		WeReGood, weReNotGood := folderExists(".fir")
+		if weReNotGood != nil {
+			fmt.Println("🤔 This folder isn't a fir project yet...\n...but if you meant to create one, you can type `fir save` at any time to get started :)")
+		}
+		if WeReGood {
+			fmt.Println("👍 This folder is a fir project :)\n- Type `fir save` to save a snapshot of your progress\n- Type `fir history` to view your saves so far")
+		}
 	} else {
 		switch os.Args[1] {
 		case "save":
 			firSaveCase()
 			fmt.Println("💾 Snapshot saved")
 		case "history":
-			fmt.Println("fir history command was run")
+			firHistoryCase()
 		case "sync":
 			fmt.Println("fir sync command was run")
 		default:
@@ -43,6 +50,48 @@ func main() {
 	_, fExistsErr := fileExists(LocalConfig)
 	if fExistsErr != nil {
 		log.Println("fExistsErr: ", fExistsErr)
+	}
+}
+
+func firHistoryCase() {
+
+	now := time.Now()
+	dateString := now.Format("Mon Jan 2 15:04:05 MST 2006")
+
+	mydir, err := os.Getwd()
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("🗒️ ", "Project history for \""+mydir+"\"")
+
+	fmt.Println(dateString + " 👀 you are here")
+	checkpointDir := "./.fir/checkpoints"
+	files, err := os.ReadDir(checkpointDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// sort files by unix timestamp in filename
+	sort.Slice(files, func(i, j int) bool {
+		iName := files[i].Name()
+		jName := files[j].Name()
+		iTimestamp := iName[:strings.Index(iName, ".")]
+		jTimestamp := jName[:strings.Index(jName, ".")]
+		return iTimestamp > jTimestamp
+	})
+
+	// print first line of each file
+	for _, file := range files {
+		filePath := filepath.Join(checkpointDir, file.Name())
+		f, err := os.Open(filePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		scanner.Scan()
+		fmt.Println(scanner.Text())
 	}
 }
 
@@ -79,7 +128,7 @@ func firSaveCase() {
 	now := time.Now()
 	dateString := now.Format("Mon Jan 2 15:04:05 MST 2006")
 
-	firstLine := "message: " + saveMessage + " " + dateString + "\n"
+	firstLine := dateString + " " + saveMessage + "\n"
 	temp := firstLine + strings.Join(hashlist, "\n")
 	file.Truncate(0)
 	file.Seek(0, 0)
