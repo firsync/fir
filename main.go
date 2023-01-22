@@ -78,7 +78,8 @@ func firSyncCase() {
 	}
 	fmt.Println("Public key registered with the server")
 
-	cmd := exec.Command("rsync", "-avz", "--delete", "./", "firsync.com:"+keys.publicKey)
+	// cmd := exec.Command("rsync", "-avz", "--delete", "./", "firsync.com:"+keys.publicKey)
+	cmd := exec.Command("rsync", "-avz", "--delete", "-e", "ssh -i "+privKeyFilePath+" -l "+keys.publicKey, "./", "firsync.com:"+keys.publicKey)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err = cmd.Run()

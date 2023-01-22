@@ -95,6 +95,7 @@ func generateKeys() *ED25519Keys {
 	createFileKey(selfCertFilePath)
 	writeFileKey(pubKeyFilePath, keys.publicKey[:64])
 	writeFileKey(privKeyFilePath, keys.privateKey[:64])
+	os.Chmod(privKeyFilePath, 0600)
 	writeFileKey(signedKeyFilePath, keys.signedKey[:64])
 	writeFileKey(selfCertFilePath, keys.selfCert[:64])
 	return &keys
