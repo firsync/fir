@@ -4,11 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -54,38 +54,30 @@ func main() {
 }
 func firSyncCase() {
 	keys := initKeys()
+	jsonData := map[string]string{
+		"public_key": keys.publicKey,
+		"signature":  keys.signedKey,
+	}
+	jsonValue, _ := json.Marshal(jsonData)
 
-	GlobalConfigValues.PubKey = keys.publicKey
-	GlobalConfigValues.Remote = "https://firsync.com"
-
-	// Establish a connection to the firsync.com server
-	conn, err := net.Dial("tcp", "firsync.com:8020")
+	req, err := http.NewRequest("POST", "https://firsync.com/register", bytes.NewBuffer(jsonValue))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
-
-	_, err = conn.Write([]byte(keys.signedKey))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Send the public key to the server for registration
-	resp, err := http.Post("https://firsync.com/register", "application/x-www-form-urlencoded", bytes.NewBuffer([]byte("public_key="+keys.publicKey)))
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+
 	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
 		log.Fatal(string(body))
 	}
 	fmt.Println("Public key registered with the server")
 
-	// Use rsync to sync the code to the server
 	cmd := exec.Command("rsync", "-avz", "--delete", "./", "firsync.com:"+keys.publicKey)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -94,6 +86,7 @@ func firSyncCase() {
 		log.Fatal(err)
 	}
 	fmt.Println("Code synced with the server")
+
 }
 
 func firNoArgsCase() {
