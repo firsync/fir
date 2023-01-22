@@ -1,3 +1,4 @@
+![fir-github-social-banner](https://user-images.githubusercontent.com/96031819/213936016-09f8348d-b30f-49b3-aa47-943622fae02a.png)
 
 I call it 'fir'. It's a tool for version control like git but simpler.
 
